@@ -1,1 +1,0 @@
-Initialized empty Git repository in /Users/vg/Documents/projects/phone/femtoagent/.git/

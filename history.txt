@@ -1,6 +1,0 @@
-User: init git repo
-Generated Script:\n#!/bin/bash
-
-git init
-git add .
-git commit -m "Initial commit"
