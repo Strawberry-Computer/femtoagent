@@ -9,8 +9,7 @@ command -v jq >/dev/null || { echo "Error: jq required"; exit 1; }
 
 ENDPOINT="${ENDPOINT:-https://openrouter.ai/api/v1/chat/completions}"
 MODEL="${MODEL:-anthropic/claude-3.5-sonnet}"
-HEAD_LINES="${HEAD_LINES:-10}"
-TAIL_LINES="${TAIL_LINES:-20}"
+TAIL_LINES="${TAIL_LINES:-500}"
 SCRIPT_FILE="${SCRIPT_FILE:-generated_script.sh}"
 
 touch history.txt result.txt
@@ -23,7 +22,7 @@ while true; do
     [ "$prompt" = "exit" ] && break
     echo "User: $prompt" >> history.txt
 
-    tagged_user="<history-head>$(head -n "$HEAD_LINES" history.txt)</history-head>
+    tagged_user="<history-head>$(tail -n "$TAIL_LINES" history.txt | head -n 2)</history-head>
 <history-tail>$(tail -n "$TAIL_LINES" history.txt)</history-tail>
 <previous-result>$(cat result.txt)</previous-result>
 <task>$prompt</task>"
