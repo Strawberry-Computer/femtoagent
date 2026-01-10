@@ -43,7 +43,9 @@ while true; do
     error=$(echo "$response" | jq -r '.error.message // empty')
     [ -n "$error" ] && { echo "Error: $error"; continue; }
 
-    script=$(echo "$response" | jq -r '.choices[0].message.content // "No script generated"')
+    raw_response=$(echo "$response" | jq -r '.choices[0].message.content // "No script generated"')
+    script=$(echo "$raw_response" | sed -n '/^```/,/^```$/p' | sed '1d;$d')
+    [ -z "$script" ] && script="$raw_response"
     echo "AI Generated Script: $script"
 
     # Append to history.json
