@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Minimal CLI AI Coding Agent: OpenRouter, Claude Sonnet 4, tee exec, permission
+# Minimal CLI AI Coding Agent: OpenRouter, Claude Sonnet 4, cache-optimized
 # Deps: curl, jq, coreutils
 
 [ -z "$OPENROUTER_API_KEY" ] && { echo "Error: OPENROUTER_API_KEY not set"; exit 1; }
@@ -9,10 +9,10 @@ command -v jq >/dev/null || { echo "Error: jq required"; exit 1; }
 
 ENDPOINT="${ENDPOINT:-https://openrouter.ai/api/v1/chat/completions}"
 MODEL="${MODEL:-anthropic/claude-sonnet-4}"
-TAIL_LINES="${TAIL_LINES:-500}"
 SCRIPT_FILE="${SCRIPT_FILE:-generated_script.sh}"
 
-touch history.txt result.txt
+[ -f history.json ] || echo "[]" > history.json
+touch result.txt
 [ -f system_prompt.txt ] || echo "You are a bash coding agent. Generate only the bash script code for the task, no text." > system_prompt.txt
 
 echo "Welcome to AI Coding Agent. Describe task; I'll generate/execute bash. Type 'exit' to quit."
@@ -20,14 +20,23 @@ echo "Welcome to AI Coding Agent. Describe task; I'll generate/execute bash. Typ
 while true; do
     read -e -p "You: " prompt
     [ "$prompt" = "exit" ] && break
-    echo "User: $prompt" >> history.txt
 
-    tagged_user="<history-head>$(tail -n "$TAIL_LINES" history.txt | head -n 2)</history-head>
-<history-tail>$(tail -n "$TAIL_LINES" history.txt)</history-tail>
-<previous-result>$(cat result.txt)</previous-result>
-<task>$prompt</task>"
+    # Build user content with result context
+    result_content=$(cat result.txt)
+    [ -n "$result_content" ] && user_content="<previous-result>$result_content</previous-result>
+<task>$prompt</task>" || user_content="<task>$prompt</task>"
 
-    body=$(jq -n --arg m "$MODEL" --arg s "$(cat system_prompt.txt)" --arg u "$tagged_user" '{model:$m,messages:[{role:"system",content:$s},{role:"user",content:$u}]}')
+    # Build messages: system (cached) + history (last cached) + new user
+    messages=$(jq -n \
+        --arg sys "$(cat system_prompt.txt)" \
+        --slurpfile hist history.json \
+        --arg user "$user_content" '
+        [{role:"system", content:$sys, cache_control:{type:"ephemeral"}}] +
+        (if ($hist[0] | length) > 0 then ($hist[0][:-1] + [$hist[0][-1] + {cache_control:{type:"ephemeral"}}]) else [] end) +
+        [{role:"user", content:$user}]
+    ')
+
+    body=$(jq -n --arg m "$MODEL" --argjson msgs "$messages" '{model:$m,messages:$msgs}')
 
     response=$(curl -s -X POST "$ENDPOINT" -H "Authorization: Bearer $OPENROUTER_API_KEY" -H "Content-Type: application/json" -d "$body")
 
@@ -35,8 +44,10 @@ while true; do
     [ -n "$error" ] && { echo "Error: $error"; continue; }
 
     script=$(echo "$response" | jq -r '.choices[0].message.content // "No script generated"')
-    echo "Generated Script:\n$script" >> history.txt
     echo "AI Generated Script: $script"
+
+    # Append to history.json
+    jq --arg u "$user_content" --arg a "$script" '. + [{role:"user",content:$u},{role:"assistant",content:$a}]' history.json > history.json.tmp && mv history.json.tmp history.json
 
     [ "$script" = "No script generated" ] && continue
     echo "$script" > "$SCRIPT_FILE"
