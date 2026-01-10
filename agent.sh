@@ -7,29 +7,34 @@
 command -v curl >/dev/null || { echo "Error: curl required"; exit 1; }
 command -v jq >/dev/null || { echo "Error: jq required"; exit 1; }
 
+# Configuration via environment variables
 ENDPOINT="${ENDPOINT:-https://openrouter.ai/api/v1/chat/completions}"
 MODEL="${MODEL:-anthropic/claude-opus-4.5}"
+SYSTEM_PROMPT_FILE="${SYSTEM_PROMPT_FILE:-system_prompt.txt}"
+HISTORY_FILE="${HISTORY_FILE:-history.json}"
+RESULT_FILE="${RESULT_FILE:-result.txt}"
 
-[ -f history.json ] || echo "[]" > history.json
-touch result.txt
-[ -f system_prompt.txt ] || echo "You are a bash coding agent. Use the run_script tool to execute bash commands." > system_prompt.txt
+# Initialize files
+[ -f "$HISTORY_FILE" ] || echo "[]" > "$HISTORY_FILE"
+touch "$RESULT_FILE"
+[ -f "$SYSTEM_PROMPT_FILE" ] || echo "You are a bash coding agent. Use the run_script tool to execute bash commands." > "$SYSTEM_PROMPT_FILE"
 
 TOOLS='[{"type":"function","function":{"name":"run_script","description":"Execute bash script","parameters":{"type":"object","properties":{"script":{"type":"string"}},"required":["script"]}}}]'
 
-append_hist() { jq --arg u "$1" --arg a "$2" '. + [{role:"user",content:$u},{role:"assistant",content:$a}]' history.json > history.json.tmp && mv history.json.tmp history.json; }
+append_hist() { jq --arg u "$1" --arg a "$2" '. + [{role:"user",content:$u},{role:"assistant",content:$a}]' "$HISTORY_FILE" > "$HISTORY_FILE.tmp" && mv "$HISTORY_FILE.tmp" "$HISTORY_FILE"; }
 
-echo "AI Coding Agent v2. Type 'exit' to quit."
+echo "AI Coding Agent. Type 'exit' to quit."
 
 while true; do
     read -e -p "You: " prompt
     [[ "$prompt" = "exit" ]] && break
     [[ -z "$prompt" ]] && continue
 
-    result=$(<result.txt)
+    result=$(<"$RESULT_FILE")
     [[ -n "$result" ]] && user="<previous-result>$result</previous-result>
 <task>$prompt</task>" || user="<task>$prompt</task>"
 
-    messages=$(jq -n --arg sys "$(<system_prompt.txt)" --slurpfile h history.json --arg u "$user" '
+    messages=$(jq -n --arg sys "$(<"$SYSTEM_PROMPT_FILE")" --slurpfile h "$HISTORY_FILE" --arg u "$user" '
         [{role:"system",content:$sys,cache_control:{type:"ephemeral"}}] +
         (if ($h[0]|length)>0 then $h[0][:-1]+[$h[0][-1]+{cache_control:{type:"ephemeral"}}] else [] end) +
         [{role:"user",content:$u}]')
@@ -46,7 +51,7 @@ while true; do
         echo "Script: $script"
         append_hist "$user" "$script"
         read -e -p "Run? (y/n): " c
-        [[ "$AUTO" = "1" || "$c" =~ ^[yY]$ ]] && bash -c "$script" 2>&1 | tee result.txt
+        [[ "$AUTO" = "1" || "$c" =~ ^[yY]$ ]] && bash -c "$script" 2>&1 | tee "$RESULT_FILE"
     else
         txt=$(echo "$resp" | jq -r '.choices[0].message.content // "No response"')
         echo "AI: $txt"
