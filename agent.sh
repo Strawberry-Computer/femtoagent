@@ -8,7 +8,7 @@ command -v curl >/dev/null || { echo "Error: curl required"; exit 1; }
 command -v jq >/dev/null || { echo "Error: jq required"; exit 1; }
 
 ENDPOINT="${ENDPOINT:-https://openrouter.ai/api/v1/chat/completions}"
-MODEL="${MODEL:-anthropic/claude-sonnet-4}"
+MODEL="${MODEL:-anthropic/claude-opus-4.5}"
 SCRIPT_FILE="${SCRIPT_FILE:-generated_script.sh}"
 
 [ -f history.json ] || echo "[]" > history.json
